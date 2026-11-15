@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Влагомер ВМП.0704 - SCADA Панель</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --bg-color: #1a1a1a;
+            --panel-bg: #252525;
+            --border-color: #444;
+            --text-main: #e0e0e0;
+            --text-muted: #999;
+            --lcd-green: #33cc66;
+            --lcd-orange: #e68a00;
+            --lcd-cyan: #3399cc;
+            --led-green: #2e7d32;
+            --led-red: #c62828;
+            --accent-blue: #4a90e2;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .header {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 20px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 15px;
+            width: 100%;
+            max-width: 1300px;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 350px 1fr 300px;
+            gap: 20px;
+            width: 100%;
+            max-width: 1300px;
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel-title {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        .indicator-box {
+            background: #111;
+            border-radius: 4px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+
+        .indicator-title {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .indicator-value {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 40px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+
+        .val-green { color: var(--lcd-green); }
+        .val-orange { color: var(--lcd-orange); }
+        .val-cyan { color: var(--lcd-cyan); }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 16px;
+            padding: 8px 0;
+            border-bottom: 1px dashed #444;
+        }
+        .data-row:last-child { border-bottom: none; }
+        .data-label { color: var(--text-muted); font-family: 'Roboto', sans-serif; font-size: 14px;}
+
+        /* Стили для ползунков */
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .slider-group label {
+            font-size: 14px;
+            color: var(--text-main);
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            position: relative;
+            z-index: 2; /* Ползунок поверх маркеров */
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            margin-top: -7px;
+            z-index: 3;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #444;
+            border-radius: 2px;
+            z-index: 2;
+        }
+        input[type=range]:disabled::-webkit-slider-thumb { background: #666; cursor: not-allowed; }
+        input[type=range]:disabled::-webkit-slider-runnable-track { background: #333; }
+
+        /* Контейнер для маркеров записи */
+        .playback-container {
+            position: relative;
+            width: 100%;
+            height: 24px; /* Высота контейнера для маркеров */
+            display: flex;
+            align-items: center;
+        }
+
+        .markers-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Чтобы не мешать ползунку, если что */
+            z-index: 1;
+        }
+
+        .alarm-marker {
+            position: absolute;
+            top: 2px;
+            width: 4px;
+            height: 20px;
+            background-color: var(--led-red);
+            cursor: pointer;
+            pointer-events: auto; /* Разрешаем клики по маркерам */
+            transform: translateX(-50%);
+            border-radius: 2px;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .alarm-marker:hover {
+            transform: translateX(-50%) scaleY(1.2);
+            box-shadow: 0 0 8px var(--led-red);
+            z-index: 10;
+        }
+
+        /* Тултип для маркера */
+        .alarm-marker::after {
+            content: attr(data-time);
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            border: 1px solid #555;
+        }
+        .alarm-marker:hover::after {
+            opacity: 1;
+        }
+
+        .btn {
+            background-color: #333;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: background-color 0.2s;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .btn:hover { background-color: #444; }
+        .btn-primary { border-color: var(--accent-blue); color: #fff; background-color: #2a3a4a; }
+        .btn-primary:hover { background-color: #3a4a5a; }
+        .btn-danger { border-color: var(--led-red); color: #fff; background-color: #4a2a2a; }
+        .btn-danger:hover { background-color: #5a3a3a; }
+        
+        .btn-record { border-color: #c62828; color: #ff8888; background-color: #331111; }
+        .btn-record:hover { background-color: #441111; }
+        .btn-record.active { background-color: #c62828; color: white; }
+
+        .report-box {
+            background: #111;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            font-size: 14px;
+            text-align: center;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .status-leds {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: #111;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #333;
+        }
+        .led-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-main);
+        }
+        .led {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #333;
+            border: 1px solid #222;
+        }
+        .led.active-green { background: var(--led-green); }
+        .led.active-red { background: var(--led-red); }
+
+        .osc-container {
+            grid-column: 2 / 3;
+            grid-row: 1 / 3;
+            background-color: #111;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .osc-header {
+            padding: 10px 15px;
+            background: #222;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">Многофазный поточный влагомер «Квалитет» ВМП.0704</div>
+
+    <div class="main-container">
+        
+        <div class="panel">
+            <div class="panel-title">Показания прибора</div>
+            
+            <div class="indicator-box">
+                <div class="indicator-title">Влажность (Объемная доля воды)</div>
+                <div class="indicator-value val-green" id="val-water">0.00 <span style="font-size:20px">%</span></div>
+            </div>
+
+            <div class="indicator-box">
+                <div class="indicator-title">Температура потока</div>
+                <div class="indicator-value val-orange" id="val-temp">0.0 <span style="font-size:20px">°C</span></div>
+            </div>
+
+            <div style="background: #111; border-radius: 4px; padding: 10px; border: 1px solid #333;">
+                <div class="data-row">
+                    <span class="data-label">Напряжение U3 (Датчик):</span>
+                    <span class="val-green" id="val-v3">0.00 В</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Напряжение U5 (Термо):</span>
+                    <span class="val-orange" id="val-v5">0.00 В</span>
+                </div>
+                <div class="data-row" style="margin-top: 5px;">
+                    <span class="data-label">Код АЦП (8-бит):</span>
+                    <span class="val-cyan" id="val-adc">00000000</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="osc-container">
+            <div class="osc-header">
+                <span>Осциллограмма сигналов</span>
+                <span style="color:var(--lcd-green)">CH1: Вход (U1A)</span>
+                <span style="color:#cc3333">CH2: Выход (Фильтр)</span>
+            </div>
+            <canvas id="oscCanvas"></canvas>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Запись данных</div>
+            <button class="btn btn-record" id="btn-record" onclick="toggleRecord()">🔴 Начать запись</button>
+            
+            <div class="report-box" id="report-box"></div>
+
+            <div class="slider-group" style="margin-top: 5px; opacity: 0.5;" id="playback-group">
+                <label>Просмотр записи: <span id="playback-time">Конец</span></label>
+                <!-- Контейнер для ползунка и маркеров -->
+                <div class="playback-container" id="playback-container">
+                    <div class="markers-overlay" id="markers-overlay"></div>
+                    <input type="range" id="slider-playback" min="0" max="100" value="100" disabled oninput="onPlaybackChange()">
+                </div>
+            </div>
+
+            <div class="panel-title" style="margin-top: 10px;">Управление симуляцией</div>
+            <button class="btn btn-primary" id="btn-auto" onclick="toggleAuto()">Режим: АВТОМАТ</button>
+            <button class="btn btn-danger" id="btn-pause" onclick="togglePause()">⏸ ПАУЗА</button>
+            <button class="btn" onclick="resetValues()">Сброс значений</button>
+
+            <div class="panel-title" style="margin-top: 10px;">Ручная настройка</div>
+            <div class="slider-group">
+                <label>Влажность (C3): <span id="slider-water-val">12.45</span>%</label>
+                <input type="range" id="slider-water" min="0" max="100" step="0.1" value="12.45" oninput="onSliderChange('water')">
+            </div>
+
+            <div class="slider-group">
+                <label>Температура (R9): <span id="slider-temp-val">45.2</span>°C</label>
+                <input type="range" id="slider-temp" min="0" max="100" step="0.1" value="45.2" oninput="onSliderChange('temp')">
+            </div>
+
+            <div class="panel-title" style="margin-top: 10px;">Статус</div>
+            <div class="status-leds">
+                <div class="led-item"><div class="led active-green" id="led-power"></div> Питание в норме</div>
+                <div class="led-item"><div class="led" id="led-alarm"></div> Авария (W > 40%)</div>
+                <div class="led-item"><div class="led active-red" id="led-rec"></div> Запись данных</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('oscCanvas');
+        const ctx = canvas.getContext('2d');
+        let time = 0;
+
+        let isRunning = true;
+        let isAutoMode = true;
+        let isRecording = false;
+
+        let waterContent = 12.45;
+        let temperature = 45.2;
+        let voltageOut = 3.14;
+        let voltageTemp = 1.25;
+        let adcCode = 171;
+        let targetWater = 12.45;
+        let targetTemp = 45.2;
+
+        let recordedData = [];
+        let alarmIndices = []; // Массив индексов, где были аварии
+
+        const sliderWater = document.getElementById('slider-water');
+        const sliderTemp = document.getElementById('slider-temp');
+        const sliderPlayback = document.getElementById('slider-playback');
+        const playbackGroup = document.getElementById('playback-group');
+        const reportBox = document.getElementById('report-box');
+        const markersOverlay = document.getElementById('markers-overlay');
+
+        const ALARM_THRESHOLD = 40;
+
+        function toggleRecord() {
+            const btn = document.getElementById('btn-record');
+            const ledRec = document.getElementById('led-rec');
+
+            if (!isRecording) {
+                // СТАРТ ЗАПИСИ
+                recordedData = []; 
+                alarmIndices = [];
+                markersOverlay.innerHTML = ''; // Очищаем старые маркеры
+                isRecording = true;
+                btn.innerText = "⏹ Стоп запись";
+                btn.classList.add('active');
+                ledRec.classList.add('active-red');
+                
+                sliderPlayback.disabled = true;
+                playbackGroup.style.opacity = '0.5';
+                document.getElementById('playback-time').innerText = "Идет запись...";
+                reportBox.style.display = 'none'; 
+            } else {
+                // СТОП ЗАПИСИ
+                isRecording = false;
+                btn.innerText = "🔴 Начать запись";
+                btn.classList.remove('active');
+                ledRec.classList.remove('active-red');
+                
+                if (recordedData.length > 0) {
+                    sliderPlayback.disabled = false;
+                    playbackGroup.style.opacity = '1';
+                    sliderPlayback.max = recordedData.length - 1;
+                    sliderPlayback.value = recordedData.length - 1;
+                    document.getElementById('playback-time').innerText = "Конец (" + (recordedData.length / 60).toFixed(1) + " с)";
+                    
+                    analyzeRecording(); // Запускаем анализ и создание маркеров
+                }
+            }
+        }
+
+        function analyzeRecording() {
+            if (recordedData.length === 0) return;
+
+            let alarms = 0;
+            let maxWater = 0;
+            let prevWasAlarm = false;
+            alarmIndices = []; // Сбрасываем массив маркеров
+
+            for (let i = 0; i < recordedData.length; i++) {
+                let w = recordedData[i].water;
+                if (w > maxWater) maxWater = w;
+
+                let isNowAlarm = (w > ALARM_THRESHOLD);
+                if (isNowAlarm && !prevWasAlarm) {
+                    alarms++;
+                    alarmIndices.push(i); // Запоминаем индекс аварии
+                }
+                prevWasAlarm = isNowAlarm;
+            }
+
+            // Вывод текста в отчет
+            reportBox.style.display = 'block';
+            if (alarms === 0) {
+                reportBox.innerHTML = `
+                    <div style="color: var(--lcd-green); font-weight: bold; margin-bottom: 5px;">✔ Аварий не обнаружено</div>
+                    <div style="color: #888; font-size: 12px;">Макс. влажность: ${maxWater.toFixed(2)}%<br>(Порог: >${ALARM_THRESHOLD}%)</div>
+                `;
+            } else {
+                reportBox.innerHTML = `
+                    <div style="color: var(--led-red); font-weight: bold; margin-bottom: 5px;">⚠ Обнаружены аварии!</div>
+                    <div style="color: #ccc; font-size: 14px;">Кол-во пересечений: <b>${alarms}</b></div>
+                    <div style="color: #888; font-size: 12px;">Макс. влажность: ${maxWater.toFixed(2)}%<br>Кликните на красные метки ниже.</div>
+                `;
+            }
+
+            drawMarkers(); // Рисуем метки на ползунке
+        }
+
+        // Отрисовка маркеров поверх ползунка
+        function drawMarkers() {
+            markersOverlay.innerHTML = ''; // Очищаем
+            if (recordedData.length === 0) return;
+
+            const totalLength = recordedData.length - 1;
+
+            alarmIndices.forEach(index => {
+                // Вычисляем позицию в процентах
+                let percent = (index / totalLength) * 100;
+                
+                let marker = document.createElement('div');
+                marker.className = 'alarm-marker';
+                marker.style.left = percent + '%';
+                marker.setAttribute('data-time', 'Авария: ' + (index / 60).toFixed(1) + ' с');
+                
+                // Клик по маркеру
+                marker.onclick = function(e) {
+                    e.stopPropagation(); // Чтобы клик не проваливался на ползунок
+                    sliderPlayback.value = index;
+                    onPlaybackChange(); // Принудительно обновляем показания
+                };
+
+                markersOverlay.appendChild(marker);
+            });
+        }
+
+        function onPlaybackChange() {
+            if (recordedData.length === 0 || isRecording) return;
+            let index = parseInt(sliderPlayback.value);
+            
+            waterContent = recordedData[index].water;
+            temperature = recordedData[index].temp;
+            voltageOut = recordedData[index].v3;
+            voltageTemp = recordedData[index].v5;
+            adcCode = recordedData[index].adc;
+
+            renderData();
+            document.getElementById('playback-time').innerText = "Время: " + (index / 60).toFixed(1) + " с";
+        }
+
+        function togglePause() {
+            isRunning = !isRunning;
+            const btn = document.getElementById('btn-pause');
+            if (isRunning) {
+                btn.innerText = "⏸ ПАУЗА";
+                btn.classList.replace('btn-primary', 'btn-danger');
+            } else {
+                btn.innerText = "▶ ПРОДОЛЖИТЬ";
+                btn.classList.replace('btn-danger', 'btn-primary');
+            }
+        }
+
+        function toggleAuto() {
+            isAutoMode = !isAutoMode;
+            const btn = document.getElementById('btn-auto');
+            if (isAutoMode) {
+                btn.innerText = "Режим: АВТОМАТ";
+                btn.classList.replace('btn-danger', 'btn-primary');
+                sliderWater.disabled = true;
+                sliderTemp.disabled = true;
+            } else {
+                btn.innerText = "Режим: РУЧНОЙ";
+                btn.classList.replace('btn-primary', 'btn-danger');
+                sliderWater.disabled = false;
+                sliderTemp.disabled = false;
+                sliderWater.value = waterContent;
+                sliderTemp.value = temperature;
+            }
+        }
+
+        function onSliderChange(type) {
+            if (isAutoMode) return;
+            if (type === 'water') {
+                targetWater = parseFloat(sliderWater.value);
+                document.getElementById('slider-water-val').innerText = targetWater.toFixed(1);
+            } else {
+                targetTemp = parseFloat(sliderTemp.value);
+                document.getElementById('slider-temp-val').innerText = targetTemp.toFixed(1);
+            }
+        }
+
+        function resetValues() {
+            targetWater = 12.45; targetTemp = 45.2;
+            waterContent = 12.45; temperature = 45.2;
+            sliderWater.value = 12.45; sliderTemp.value = 45.2;
+            document.getElementById('slider-water-val').innerText = "12.45";
+            document.getElementById('slider-temp-val').innerText = "45.2";
+            renderData();
+        }
+
+        function renderData() {
+            document.getElementById('val-water').innerHTML = `${waterContent.toFixed(2)} <span style="font-size:20px">%</span>`;
+            document.getElementById('val-temp').innerHTML = `${temperature.toFixed(1)} <span style="font-size:20px">°C</span>`;
+            document.getElementById('val-v3').innerText = voltageOut.toFixed(2) + ' В';
+            document.getElementById('val-v5').innerText = voltageTemp.toFixed(2) + ' В';
+            let binStr = adcCode.toString(2).padStart(8, '0');
+            document.getElementById('val-adc').innerText = `${adcCode} (${binStr})`;
+
+            const ledAlarm = document.getElementById('led-alarm');
+            if (waterContent > ALARM_THRESHOLD) ledAlarm.classList.add('active-red');
+            else ledAlarm.classList.remove('active-red');
+        }
+
+        function updateData() {
+            if (!isRunning) return;
+            if (!isRecording && sliderPlayback.matches(':active')) return;
+
+            if (isAutoMode) {
+                if (Math.random() < 0.02) {
+                    targetWater = 5 + Math.random() * 60; 
+                    targetTemp = 30 + Math.random() * 40; 
+                }
+                if (isRecording || sliderPlayback.disabled) {
+                    sliderWater.value = waterContent;
+                    sliderTemp.value = temperature;
+                    document.getElementById('slider-water-val').innerText = waterContent.toFixed(1);
+                    document.getElementById('slider-temp-val').innerText = temperature.toFixed(1);
+                }
+            }
+
+            if (isRecording || sliderPlayback.disabled) {
+                waterContent += (targetWater - waterContent) * 0.05;
+                temperature += (targetTemp - temperature) * 0.05;
+
+                voltageOut = 0.5 + (waterContent / 100) * 4.5;
+                voltageTemp = 0.1 + (temperature / 100) * 1.0;
+                adcCode = Math.floor((voltageOut / 5.0) * 255);
+
+                renderData();
+
+                if (isRecording) {
+                    recordedData.push({
+                        water: waterContent,
+                        temp: temperature,
+                        v3: voltageOut,
+                        v5: voltageTemp,
+                        adc: adcCode
+                    });
+                    
+                    sliderPlayback.max = recordedData.length - 1;
+                    sliderPlayback.value = recordedData.length - 1;
+                    document.getElementById('playback-time').innerText = "Идет запись... (" + (recordedData.length / 60).toFixed(1) + " с)";
+                }
+            }
+        }
+
+        function drawOscilloscope() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            const width = canvas.width;
+            const height = canvas.height;
+            const midY = height / 2;
+
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let i = 0; i < width; i += 30) { ctx.moveTo(i, 0); ctx.lineTo(i, height); }
+            for (let i = 0; i < height; i += 30) { ctx.moveTo(0, i); ctx.lineTo(width, i); }
+            ctx.stroke();
+
+            ctx.strokeStyle = '#555555';
+            ctx.beginPath();
+            ctx.moveTo(0, midY); ctx.lineTo(width, midY);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#33cc66';
+            ctx.lineWidth = 2;
+            for (let x = 0; x < width; x++) {
+                let y = midY - Math.sin((x / width) * Math.PI * 6 + time) * (height * 0.25);
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#cc3333';
+            let dcY = midY - (voltageOut / 5.0) * (height * 0.4);
+            for (let x = 0; x < width; x++) {
+                let ripple = Math.sin((x / width) * Math.PI * 40 + time * 3) * 2; 
+                if (x === 0) ctx.moveTo(x, dcY + ripple);
+                else ctx.lineTo(x, dcY + ripple);
+            }
+            ctx.stroke();
+            
+            if (isRunning) time += 0.1; 
+        }
+
+        function loop() {
+            updateData();
+            drawOscilloscope();
+            requestAnimationFrame(loop); 
+        }
+
+        toggleAuto(); 
+        loop();
+    </script>
+</body>
+</html>
